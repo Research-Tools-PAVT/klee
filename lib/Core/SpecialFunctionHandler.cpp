@@ -75,9 +75,9 @@ cl::opt<bool>
 // dispatch easier to implement.
 static SpecialFunctionHandler::HandlerInfo handlerInfo[] = {
 #define add(name, handler, ret)                                                \
-  { name, &SpecialFunctionHandler::handler, false, ret, false }
+  {name, &SpecialFunctionHandler::handler, false, ret, false}
 #define addDNR(name, handler)                                                  \
-  { name, &SpecialFunctionHandler::handler, true, false, false }
+  {name, &SpecialFunctionHandler::handler, true, false, false}
     addDNR("__assert_rtn", handleAssertFail),
     addDNR("__assert_fail", handleAssertFail),
     addDNR("__assert", handleAssertFail),
@@ -109,6 +109,7 @@ static SpecialFunctionHandler::HandlerInfo handlerInfo[] = {
     add("klee_is_symbolic", handleIsSymbolic, true),
     add("klee_make_symbolic", handleMakeSymbolic, false),
     add("mark_pse_symbolic", handleMarkPSESymbolic, false),
+    add("mark_pse_symbolic_float", handleMarkPSESymbolicFloat, false),
     add("klee_dump_kquery_state", handleGetKQueryExpression, false),
     add("mark_state_winning", handleStateAnnotateWin, false),
     add("klee_dump_symbolic_details", handleGetSymbolicDetails, false),
@@ -438,8 +439,9 @@ void SpecialFunctionHandler::handleMemalign(ExecutionState &state,
                                             KInstruction *target,
                                             std::vector<ref<Expr>> &arguments) {
   if (arguments.size() != 2) {
-    executor.terminateStateOnUserError(state,
-      "Incorrect number of arguments to memalign(size_t alignment, size_t size)");
+    executor.terminateStateOnUserError(
+        state, "Incorrect number of arguments to memalign(size_t alignment, "
+               "size_t size)");
     return;
   }
 
@@ -450,7 +452,8 @@ void SpecialFunctionHandler::handleMemalign(ExecutionState &state,
   auto alignmentConstExpr = dyn_cast<ConstantExpr>(alignmentExpr);
 
   if (!alignmentConstExpr) {
-    executor.terminateStateOnUserError(state, "Could not determine size of symbolic alignment");
+    executor.terminateStateOnUserError(
+        state, "Could not determine size of symbolic alignment");
     return;
   }
 
@@ -474,7 +477,8 @@ void SpecialFunctionHandler::handleEhUnwindRaiseExceptionImpl(
 
   ref<ConstantExpr> exceptionObject = dyn_cast<ConstantExpr>(arguments[0]);
   if (!exceptionObject.get()) {
-    executor.terminateStateOnExecError(state, "Internal error: Symbolic exception pointer");
+    executor.terminateStateOnExecError(
+        state, "Internal error: Symbolic exception pointer");
     return;
   }
 
@@ -611,7 +615,8 @@ void SpecialFunctionHandler::handleSetForking(
   if (ConstantExpr *CE = dyn_cast<ConstantExpr>(value)) {
     state.forkDisabled = CE->isZero();
   } else {
-    executor.terminateStateOnUserError(state, "klee_set_forking requires a constant arg");
+    executor.terminateStateOnUserError(
+        state, "klee_set_forking requires a constant arg");
   }
 }
 
@@ -710,7 +715,8 @@ void SpecialFunctionHandler::handleGetErrno(ExecutionState &state,
   bool resolved = state.addressSpace.resolveOne(
       ConstantExpr::create((uint64_t)errno_addr, Expr::Int64), result);
   if (!resolved)
-    executor.terminateStateOnUserError(state, "Could not resolve address for errno");
+    executor.terminateStateOnUserError(state,
+                                       "Could not resolve address for errno");
   executor.bindLocal(target, state, result.second->read(0, Expr::Int32));
 }
 
@@ -796,23 +802,22 @@ void SpecialFunctionHandler::handleCheckMemoryAccess(
   ref<Expr> address = executor.toUnique(state, arguments[0]);
   ref<Expr> size = executor.toUnique(state, arguments[1]);
   if (!isa<ConstantExpr>(address) || !isa<ConstantExpr>(size)) {
-    executor.terminateStateOnUserError(state, "check_memory_access requires constant args");
+    executor.terminateStateOnUserError(
+        state, "check_memory_access requires constant args");
   } else {
     ObjectPair op;
 
     if (!state.addressSpace.resolveOne(cast<ConstantExpr>(address), op)) {
-      executor.terminateStateOnError(state,
-                                     "check_memory_access: memory error",
+      executor.terminateStateOnError(state, "check_memory_access: memory error",
                                      StateTerminationType::Ptr,
                                      executor.getAddressInfo(state, address));
     } else {
       ref<Expr> chk = op.first->getBoundsCheckPointer(
           address, cast<ConstantExpr>(size)->getZExtValue());
       if (!chk->isTrue()) {
-        executor.terminateStateOnError(state,
-                                       "check_memory_access: memory error",
-                                       StateTerminationType::Ptr,
-                                       executor.getAddressInfo(state, address));
+        executor.terminateStateOnError(
+            state, "check_memory_access: memory error",
+            StateTerminationType::Ptr, executor.getAddressInfo(state, address));
       }
     }
   }
@@ -851,8 +856,9 @@ void SpecialFunctionHandler::handleMakeSymbolic(
   std::string name;
 
   if (arguments.size() != 3) {
-    executor.terminateStateOnUserError(state,
-        "Incorrect number of arguments to klee_make_symbolic(void*, size_t, char*)");
+    executor.terminateStateOnUserError(
+        state, "Incorrect number of arguments to klee_make_symbolic(void*, "
+               "size_t, char*)");
     return;
   }
 
@@ -875,7 +881,8 @@ void SpecialFunctionHandler::handleMakeSymbolic(
     ExecutionState *s = it->second;
 
     if (old->readOnly) {
-      executor.terminateStateOnUserError(*s, "cannot make readonly object symbolic");
+      executor.terminateStateOnUserError(
+          *s, "cannot make readonly object symbolic");
       return;
     }
 
@@ -891,8 +898,9 @@ void SpecialFunctionHandler::handleMakeSymbolic(
 
     if (res) {
       executor.executeMakeSymbolic(*s, mo, name);
-    } else {      
-      executor.terminateStateOnUserError(*s, "Wrong size given to klee_make_symbolic");
+    } else {
+      executor.terminateStateOnUserError(
+          *s, "Wrong size given to klee_make_symbolic");
     }
   }
 }
@@ -922,6 +930,36 @@ void SpecialFunctionHandler::handleMarkPSESymbolic(
     *(executor.writeDistFileptr)
         << name << " ~ UniformInt(" << arguments[3] << "," << arguments[4]
         << ") :: w" << arguments[1] << "\n";
+
+  pseVarsSet.insert(name);
+}
+
+void SpecialFunctionHandler::handleMarkPSESymbolicFloat(
+    ExecutionState &state, KInstruction *target,
+    std::vector<ref<Expr>> &arguments) {
+  std::string name;
+
+  if (arguments.size() != 3) {
+    executor.terminateStateOnError(
+        state,
+        "Incorrect number of arguments to "
+        "mark_pse_symbolic_float(void*, size_t, char*)",
+        StateTerminationType::Exit);
+    return;
+  }
+
+  name = arguments[2]->isZero() ? "" : readStringAtAddress(state, arguments[2]);
+
+  if (name.length() == 0) {
+    name = "new_pse_var";
+    klee_warning(
+        "mark_pse_symbolic_float: renamed empty name to \"new_pse_var\"");
+  }
+
+  // COMMENT : Print to *_dists.txt file.
+  if (pseVarsSet.find(name) == pseVarsSet.end())
+    *(executor.writeDistFileptr)
+        << name << " ~ Bernoulli(" << name << ") :: w" << arguments[1] << "\n";
 
   pseVarsSet.insert(name);
 }

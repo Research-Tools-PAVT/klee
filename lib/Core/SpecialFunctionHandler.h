@@ -28,7 +28,7 @@ template <typename T> class ref;
 
 class SpecialFunctionHandler {
 public:
-  typedef void (SpecialFunctionHandler::*Handler)(
+  typedef void (SpecialFunctionHandler:: *Handler)(
       ExecutionState &state, KInstruction *target,
       std::vector<ref<Expr>> &arguments);
   typedef std::map<const llvm::Function *, std::pair<Handler, bool>>
@@ -54,7 +54,7 @@ public:
     int index;
 
   public:
-    const_iterator(value_type *hi) : base(hi), index(0){};
+    const_iterator(value_type *hi) : base(hi), index(0) {};
     const_iterator &operator++();   // pre-fix
     const_iterator operator++(int); // post-fix
     const value_type &operator*() { return base[index]; }
@@ -148,6 +148,7 @@ public:
   HANDLER(handleGetKQueryExpression);
   HANDLER(handleAddExpectation);
   HANDLER(handleMarkPSESymbolic);
+  HANDLER(handleMarkPSESymbolicFloat);
 #undef HANDLER
 };
 } // namespace klee
